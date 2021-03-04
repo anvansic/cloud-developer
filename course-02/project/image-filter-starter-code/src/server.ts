@@ -2,6 +2,8 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import {filterImageFromURL, deleteLocalFiles} from './util/util';
 
+import fs from 'fs';
+
 (async () => {
 
   // Init the Express application
@@ -9,7 +11,7 @@ import {filterImageFromURL, deleteLocalFiles} from './util/util';
 
   // Set the network port
   const port = process.env.PORT || 8082;
-  
+
   // Use the body parser middleware for post requests
   app.use(bodyParser.json());
 
@@ -30,13 +32,54 @@ import {filterImageFromURL, deleteLocalFiles} from './util/util';
   /**************************************************************************** */
 
   //! END @TODO1
-  
+  app.get( "/filteredimage/", async ( req, res ) => {
+
+    // The URL is pulled from the query.
+    let image_url:string = req.query.image_url.toString();
+    let filteredpath: Promise<string> = filterImageFromURL(image_url);
+    let filepath: string = '';
+
+    // The image is retrieved, saved locally and prepared for display.
+    const promiseRequest: Promise<void> = new Promise(async resolve => {
+      filepath = (await filteredpath);
+      res.status(200).sendFile(filepath);
+    });
+
+    // The request is given 10 seconds to return a response...
+    const promiseTimeLimit: Promise<string> = new Promise(async resolve => {
+      setTimeout(resolve, 10000, 'fail');
+    });
+
+    // ...and if the time limit expires, an error response is returned.
+    Promise.race([promiseRequest, promiseTimeLimit]).then((result) => {
+      if(result == 'fail') {
+        res.status(404).send("The requested image was not found.")
+      }
+    });
+
+    // The rest of the function body is for cleaning up the local tmp folder.
+    const fs = require('fs');
+    const topPath = __dirname + "/util/tmp/";
+    fs.readdir(topPath, (err: any, files: Array<string>) => {
+      if(err) {
+        res.send("Nada mucho.");
+      }
+      else {
+        let arrPaths: Array<string> = [];
+        files.forEach(file => {
+          arrPaths.push(topPath + file);
+        });
+        deleteLocalFiles(arrPaths);
+      }
+    });
+  } );
+
   // Root Endpoint
   // Displays a simple message to the user
   app.get( "/", async ( req, res ) => {
     res.send("try GET /filteredimage?image_url={{}}")
   } );
-  
+
 
   // Start the Server
   app.listen( port, () => {
